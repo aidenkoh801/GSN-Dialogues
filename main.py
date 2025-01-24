@@ -1,3 +1,4 @@
+# main.py
 import os
 import sys
 import args
@@ -13,45 +14,60 @@ from decode import BeamSearchDecoder
 from train import train, evaluate
 from utils import get_datapath, get_steps, set_random_seeds, make_hps
 
+# Access flags for configuration
 FLAGS = tf.app.flags.FLAGS
+
+# Set the visible GPU devices based on the configuration
 os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.device
 
 
 def main(unused_argv):
-  set_random_seeds()
+    # Set random seeds for reproducibility
+    set_random_seeds()
 
-  get_datapath() # The dataset path
-  get_steps() # setting steps according data_size
+    # Configure dataset paths and steps based on data size
+    get_datapath()
+    get_steps()
 
-  tf.logging.set_verbosity(tf.logging.INFO)
-  print('Now the mode of this mode is {} !'.format(FLAGS.mode))
+    # Enable detailed logging
+    tf.logging.set_verbosity(tf.logging.INFO)
+    print(f"Now the mode of this run is {FLAGS.mode}!")
 
-  # if log_dir is not exited, create it.
-  if not os.path.exists(FLAGS.log_dir): os.makedirs(FLAGS.log_dir)
+    # Create log directory if it doesn't exist
+    if not os.path.exists(FLAGS.log_dir):
+        os.makedirs(FLAGS.log_dir)
 
-  if FLAGS.mode == 'decode':
-    FLAGS.branch_batch_size = FLAGS.beam_size  # for beam search
-    FLAGS.TS_mode = False
+    # Modify configuration for decoding mode
+    if FLAGS.mode == 'decode':
+        FLAGS.branch_batch_size = FLAGS.beam_size  # Adjust batch size for beam search
+        FLAGS.TS_mode = False  # Turn off teacher forcing
 
-  hps = make_hps() # make a hps namedtuple
+    # Create hyperparameters object
+    hps = make_hps()
 
-  # Vocabulary
-  vocab = Vocab(hps.vocab_path, hps.vocab_size)
-  # Train or Inference
-  if hps.mode == 'train':
-    batcher = Batcher(hps.data_path, vocab, hps)
-    eval_hps = hps._replace(mode='eval')
-    eval_batcher = Batcher(hps.eval_data_path, vocab, eval_hps)
+    # Initialize vocabulary
+    vocab = Vocab(hps.vocab_path, hps.vocab_size)
 
-    model = GSNModel(hps, vocab)
-    train(model, batcher, eval_batcher, vocab, hps)
-  elif hps.mode == 'decode':
-    decode_mdl_hps = hps._replace(max_dec_steps=1)
-    batcher = Batcher(hps.test_data_path, vocab, decode_mdl_hps)  # for test
+    # Training or decoding
+    if hps.mode == 'train':
+        # Create batchers for training and evaluation
+        batcher = Batcher(hps.data_path, vocab, hps)
+        eval_hps = hps._replace(mode='eval')
+        eval_batcher = Batcher(hps.eval_data_path, vocab, eval_hps)
 
-    model = GSNModel(decode_mdl_hps, vocab)
-    decoder = BeamSearchDecoder(model, batcher, vocab)
-    decoder._decode()
+        # Initialize the model and start training
+        model = GSNModel(hps, vocab)
+        train(model, batcher, eval_batcher, vocab, hps)
+    elif hps.mode == 'decode':
+        # Create batcher for test data
+        decode_hps = hps._replace(max_dec_steps=1)
+        batcher = Batcher(hps.test_data_path, vocab, decode_hps)
+
+        # Initialize model and decoder, then start decoding
+        model = GSNModel(decode_hps, vocab)
+        decoder = BeamSearchDecoder(model, batcher, vocab)
+        decoder._decode()
+
 
 if __name__ == '__main__':
-  tf.app.run()
+    tf.app.run()
